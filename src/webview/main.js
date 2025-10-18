@@ -26,7 +26,8 @@ const $ = document.querySelector.bind(document)
   const toggleDarkBgWrapper = $('#toggleDarkBgWrapper')
   const zoomLevel = $('#zoomLevel')
 
-  let currentColor = '#ffffff'
+  // Get default color from the color picker value (set by template)
+  let currentColor = colorPicker.value
   let isDarkBackground = false
 
   // Zoom and pan state
