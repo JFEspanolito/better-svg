@@ -3,29 +3,37 @@
   "displayName": "Better SVG",
   "description": "SVG editor with live preview and optimization",
   "version": "0.0.1",
+  "publisher": "midudev",
+  "author": {
+    "name": "Miguel Ángel Durán"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/midudev/better-svg"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCustomEditor:betterSvg.svgEditor"
-  ],
   "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:xml"
+  ],
   "contributes": {
-    "customEditors": [
-      {
-        "viewType": "betterSvg.svgEditor",
-        "displayName": "Better SVG Editor",
-        "selector": [
-          {
-            "filenamePattern": "*.svg"
-          }
-        ],
-        "priority": "default"
-      }
-    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "betterSvg.preview",
+          "name": "SVG Preview",
+          "icon": "$(eye)",
+          "when": "betterSvg.hasSvgOpen"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "betterSvg.optimize",
@@ -41,12 +49,29 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "Better SVG",
+      "properties": {
+        "betterSvg.autoReveal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reveal and expand the SVG Preview panel in Explorer when opening SVG files"
+        },
+        "betterSvg.autoCollapse": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically collapse the SVG Preview panel in Explorer when closing all SVG files"
+        }
+      }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "tsc -p ./ && npm run copy-webview",
+    "watch": "tsc -watch -p ./ & npm run watch-webview",
+    "copy-webview": "mkdir -p out/webview && cp src/webview/*.html src/webview/*.css src/webview/*.js out/webview/",
+    "watch-webview": "node -e \"require('fs').watch('src/webview', () => require('child_process').exec('npm run copy-webview'))\"",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts"
   },
