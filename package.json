@@ -39,22 +39,12 @@
         "command": "betterSvg.optimize",
         "title": "Optimize SVG",
         "icon": "$(zap)"
-      },
-      {
-        "command": "betterSvg.exportWebp",
-        "title": "Export to WEBP",
-        "icon": "$(save)"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "betterSvg.optimize",
-          "when": "resourceExtname == .svg",
-          "group": "navigation"
-        },
-        {
-          "command": "betterSvg.exportWebp",
           "when": "resourceExtname == .svg",
           "group": "navigation"
         }
