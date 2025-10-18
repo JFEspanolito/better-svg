@@ -1,12 +1,129 @@
+/**
+ * Copyright 2025 Miguel Ángel Durán
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import * as vscode from 'vscode'
-import { SvgEditorProvider } from './svgEditorProvider'
+import { SvgPreviewProvider } from './svgEditorProvider'
 import { optimize } from 'svgo'
 
+let previewProvider: SvgPreviewProvider
+
 export function activate (context: vscode.ExtensionContext) {
-  // Register custom editor provider
+  // Initialize context for view visibility
+  vscode.commands.executeCommand('setContext', 'betterSvg.hasSvgOpen', false)
+
+  // Register preview provider
+  previewProvider = new SvgPreviewProvider(context)
   context.subscriptions.push(
-    SvgEditorProvider.register(context)
+    vscode.window.registerWebviewViewProvider(
+      'betterSvg.preview',
+      previewProvider,
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
   )
+
+  // Auto-reveal panel when SVG file is opened
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+      if (editor && editor.document.fileName.endsWith('.svg')) {
+        // Show the view
+        vscode.commands.executeCommand('setContext', 'betterSvg.hasSvgOpen', true)
+
+        const config = vscode.workspace.getConfiguration('betterSvg')
+        const autoReveal = config.get<boolean>('autoReveal', true)
+
+        if (autoReveal) {
+          vscode.commands.executeCommand('betterSvg.preview.focus')
+        }
+
+        if (previewProvider) {
+          previewProvider.updatePreview(editor.document)
+        }
+      } else {
+        // If we switched to a non-SVG file, collapse the panel
+        const config = vscode.workspace.getConfiguration('betterSvg')
+        const autoCollapse = config.get<boolean>('autoCollapse', true)
+
+        if (autoCollapse) {
+          vscode.commands.executeCommand('setContext', 'betterSvg.hasSvgOpen', false)
+
+          if (previewProvider) {
+            previewProvider.clearPreview()
+          }
+        }
+      }
+    })
+  )
+
+  // Update preview when document changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument(e => {
+      const editor = vscode.window.activeTextEditor
+      if (editor &&
+          editor.document === e.document &&
+          editor.document.fileName.endsWith('.svg') &&
+          previewProvider) {
+        previewProvider.updatePreview(e.document)
+      }
+    })
+  )
+
+  // Collapse preview when SVG file is closed
+  context.subscriptions.push(
+    vscode.workspace.onDidCloseTextDocument(document => {
+      if (document.fileName.endsWith('.svg')) {
+        const config = vscode.workspace.getConfiguration('betterSvg')
+        const autoCollapse = config.get<boolean>('autoCollapse', true)
+
+        if (!autoCollapse) {
+          return
+        }
+
+        // Check if there are any other SVG files still open
+        const hasOpenSvg = vscode.window.visibleTextEditors.some(
+          editor => editor.document.fileName.endsWith('.svg')
+        )
+
+        // If no SVG files are open, hide the view
+        if (!hasOpenSvg) {
+          vscode.commands.executeCommand('setContext', 'betterSvg.hasSvgOpen', false)
+
+          if (previewProvider) {
+            previewProvider.clearPreview()
+          }
+        }
+      }
+    })
+  )
+
+  // Auto-reveal if an SVG is already open on activation
+  const activeEditor = vscode.window.activeTextEditor
+  if (activeEditor && activeEditor.document.fileName.endsWith('.svg')) {
+    vscode.commands.executeCommand('setContext', 'betterSvg.hasSvgOpen', true)
+
+    const config = vscode.workspace.getConfiguration('betterSvg')
+    const autoReveal = config.get<boolean>('autoReveal', true)
+
+    if (autoReveal) {
+      vscode.commands.executeCommand('betterSvg.preview.focus')
+    }
+
+    if (previewProvider) {
+      previewProvider.updatePreview(activeEditor.document)
+    }
+  }
 
   // Register optimize command
   context.subscriptions.push(
