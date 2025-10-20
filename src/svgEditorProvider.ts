@@ -94,14 +94,14 @@ export class SvgPreviewProvider implements vscode.WebviewViewProvider {
 
     // Get URIs for webview resources
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'main.js')
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'main.js')
     )
     const stylesUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'styles.css')
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'styles.css')
     )
 
     // Read HTML template
-    const htmlPath = path.join(this.context.extensionPath, 'out', 'webview', 'index.html')
+    const htmlPath = path.join(this.context.extensionPath, 'dist', 'webview', 'index.html')
     let html = fs.readFileSync(htmlPath, 'utf8')
 
     // Replace placeholders
