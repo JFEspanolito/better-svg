@@ -16,6 +16,7 @@
 
 import * as vscode from 'vscode'
 import * as fs from 'fs'
+import { optimizeSvgDocument } from './extension'
 
 export class SvgPreviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'betterSvg.preview'
@@ -51,6 +52,11 @@ export class SvgPreviewProvider implements vscode.WebviewViewProvider {
         case 'update':
           if (this._currentDocument) {
             this.updateTextDocument(this._currentDocument, e.content)
+          }
+          break
+        case 'optimize':
+          if (this._currentDocument) {
+            optimizeSvgDocument(this._currentDocument)
           }
           break
       }
