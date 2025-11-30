@@ -108,6 +108,9 @@
     "configurationDefaults": {
       "workbench.editorAssociations": {
         "*.svg": "default"
+      },
+      "files.associations": {
+        "*.svg": "xml"
       }
     }
   },
