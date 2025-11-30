@@ -8,7 +8,7 @@ async function main () {
     entryPoints: ['src/extension.ts'],
     bundle: true,
     format: 'cjs',
-    minify: false, // Keep code readable for Marketplace security review
+    minify: true,
     sourcemap: !production,
     sourcesContent: false,
     platform: 'node',
