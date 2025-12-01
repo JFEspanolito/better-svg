@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![image](./images/screenshot.png)
+![image](./static/screenshot.png)
 
 </div>
 
