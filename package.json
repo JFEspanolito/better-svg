@@ -11,7 +11,7 @@
   },
   "pricing": "Free",
   "license": "Apache-2.0",
-  "icon": "icon.png",
+  "icon": "./static/icon.png",
   "galleryBanner": {
     "color": "#df6c31",
     "theme": "dark"
@@ -31,7 +31,12 @@
   },
   "activationEvents": [
     "onLanguage:svg",
-    "onLanguage:xml"
+    "onLanguage:xml",
+    "onLanguage:astro",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact",
+    "onLanguage:svelte",
+    "onLanguage:vue"
   ],
   "categories": [
     "Programming Languages",
