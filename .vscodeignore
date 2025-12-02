@@ -1,9 +1,10 @@
+# files to ignore when packaging the extension
+
 .vscode/**
 .vscode-test/**
 src/**
 .gitignore
 .yarnrc
-vsc-extension-quickstart.md
 **/tsconfig.json
 **/.eslintrc.json
 **/*.map
@@ -24,6 +25,10 @@ CHANGES.md
 *.vsix
 *.webp
 *.svg
-!icon.png
-full.webp
-demo.svg
+
+# examples not needed
+examples/**
+# static files not needed
+static/full.webp
+static/screenshot.png
+static/better-svg.webp
