@@ -16,9 +16,11 @@
 
 import * as vscode from 'vscode'
 import { SvgPreviewProvider } from './svgEditorProvider'
+import { SvgGutterPreview } from './svgGutterPreview'
 import { optimize } from 'svgo/browser'
 
 let previewProvider: SvgPreviewProvider
+let gutterPreview: SvgGutterPreview
 
 export function activate (context: vscode.ExtensionContext) {
   try {
@@ -38,6 +40,51 @@ export function activate (context: vscode.ExtensionContext) {
         previewProvider,
         { webviewOptions: { retainContextWhenHidden: true } }
       )
+    )
+
+    // Initialize SVG Gutter Preview
+    gutterPreview = new SvgGutterPreview()
+    if (vscode.window.activeTextEditor) {
+      gutterPreview.updateDecorations(vscode.window.activeTextEditor)
+    }
+
+    // Update decorations when active editor changes
+    context.subscriptions.push(
+      vscode.window.onDidChangeActiveTextEditor(editor => {
+        if (editor) {
+          gutterPreview.updateDecorations(editor)
+        }
+      })
+    )
+
+    // Update decorations when document changes
+    let timeout: NodeJS.Timeout | undefined
+    const triggerUpdate = (editor: vscode.TextEditor) => {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
+      timeout = setTimeout(() => {
+        gutterPreview.updateDecorations(editor)
+      }, 500)
+    }
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeTextDocument(e => {
+        const editor = vscode.window.activeTextEditor
+        if (editor && editor.document === e.document) {
+          triggerUpdate(editor)
+        }
+      })
+    )
+
+    // Update decorations when theme changes
+    context.subscriptions.push(
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        const editor = vscode.window.activeTextEditor
+        if (editor) {
+          gutterPreview.updateDecorations(editor)
+        }
+      })
     )
 
     const updateContext = (editor: vscode.TextEditor | undefined) => {
