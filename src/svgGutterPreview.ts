@@ -1,9 +1,16 @@
 import * as vscode from 'vscode'
+import { convertJsxToSvg } from './svgTransform'
 
 interface SvgCacheEntry {
   dataUri: string
   sizeBytes: number
   timestamp: number
+}
+
+interface HoverCommandArgs {
+  uri: string
+  start: number
+  length: number
 }
 
 export class SvgHoverProvider implements vscode.HoverProvider {
@@ -15,6 +22,13 @@ export class SvgHoverProvider implements vscode.HoverProvider {
     document: vscode.TextDocument,
     position: vscode.Position
   ): vscode.Hover | null {
+    // Check if hover is enabled in settings
+    const config = vscode.workspace.getConfiguration('betterSvg')
+    const enableHover = config.get<boolean>('enableHover', true)
+    if (!enableHover) {
+      return null
+    }
+
     const text = document.getText()
     const svgRegex = /<svg[\s\S]*?>[\s\S]*?<\/svg>/g
     let match
@@ -34,16 +48,13 @@ export class SvgHoverProvider implements vscode.HoverProvider {
         const now = Date.now()
 
         if (cached && (now - cached.timestamp) < this.cacheMaxAge) {
-          return this.createHoverFromCache(cached, range)
+          return this.createHoverFromCache(cached, range, document)
         }
 
         let svgContent = originalSvg
 
         // Convert JSX syntax to valid SVG
-        svgContent = this.convertJsxToSvg(svgContent)
-
-        // Remove CSS class attribute (not useful in standalone SVG)
-        svgContent = svgContent.replace(/\s+class\s*=\s*["'][^"']*["']/g, '')
+        svgContent = convertJsxToSvg(svgContent)
 
         // Add xmlns if missing (do this early so SVG is valid)
         if (!svgContent.includes('xmlns=')) {
@@ -69,25 +80,38 @@ export class SvgHoverProvider implements vscode.HoverProvider {
         // Update cache
         this.cache.set(cacheKey, { dataUri, sizeBytes, timestamp: now })
 
-        return this.createHover(dataUri, sizeBytes, range)
+        const commandArgs = this.buildHoverCommandArgs(document, range)
+        return this.createHover(dataUri, sizeBytes, range, commandArgs)
       }
     }
 
     return null
   }
 
-  private createHover (dataUri: string, sizeBytes: number, range: vscode.Range): vscode.Hover {
+  private createHover (
+    dataUri: string,
+    sizeBytes: number,
+    range: vscode.Range,
+    commandArgs: HoverCommandArgs
+  ): vscode.Hover {
     const markdown = new vscode.MarkdownString()
     markdown.isTrusted = true
     markdown.supportHtml = true
     markdown.appendMarkdown(`![SVG Preview](${dataUri})\n\n`)
-    markdown.appendMarkdown(`**Size:** ${this.formatBytes(sizeBytes)}`)
+    markdown.appendMarkdown(`**Size:** ${this.formatBytes(sizeBytes)}\n\n`)
+    const encodedArgs = encodeURIComponent(JSON.stringify(commandArgs))
+    markdown.appendMarkdown(`[⚡ Optimizar SVG](command:betterSvg.optimizeFromHover?${encodedArgs})`)
 
     return new vscode.Hover(markdown, range)
   }
 
-  private createHoverFromCache (cached: SvgCacheEntry, range: vscode.Range): vscode.Hover {
-    return this.createHover(cached.dataUri, cached.sizeBytes, range)
+  private createHoverFromCache (
+    cached: SvgCacheEntry,
+    range: vscode.Range,
+    document: vscode.TextDocument
+  ): vscode.Hover {
+    const commandArgs = this.buildHoverCommandArgs(document, range)
+    return this.createHover(cached.dataUri, cached.sizeBytes, range, commandArgs)
   }
 
   private formatBytes (bytes: number): string {
@@ -96,6 +120,19 @@ export class SvgHoverProvider implements vscode.HoverProvider {
     }
     const kb = bytes / 1024
     return `${kb.toFixed(2)} KB`
+  }
+
+  private buildHoverCommandArgs (
+    document: vscode.TextDocument,
+    range: vscode.Range
+  ): HoverCommandArgs {
+    const start = document.offsetAt(range.start)
+    const end = document.offsetAt(range.end)
+    return {
+      uri: document.uri.toString(),
+      start,
+      length: end - start
+    }
   }
 
   private propagateStrokeAndFill (svgContent: string): string {
@@ -180,61 +217,6 @@ export class SvgHoverProvider implements vscode.HoverProvider {
     return svgContent
   }
 
-  private convertJsxToSvg (svgContent: string): string {
-    // Convert JSX expression values like {2} to "2"
-    svgContent = svgContent.replace(/=\{([^}]+)\}/g, '="$1"')
-
-    // Convert className to class
-    svgContent = svgContent.replace(/\bclassName=/g, 'class=')
-
-    // Map of JSX camelCase attributes to SVG kebab-case
-    const jsxToSvgAttributes: Record<string, string> = {
-      strokeWidth: 'stroke-width',
-      strokeLinecap: 'stroke-linecap',
-      strokeLinejoin: 'stroke-linejoin',
-      strokeDasharray: 'stroke-dasharray',
-      strokeDashoffset: 'stroke-dashoffset',
-      strokeMiterlimit: 'stroke-miterlimit',
-      strokeOpacity: 'stroke-opacity',
-      fillOpacity: 'fill-opacity',
-      fillRule: 'fill-rule',
-      clipPath: 'clip-path',
-      clipRule: 'clip-rule',
-      fontFamily: 'font-family',
-      fontSize: 'font-size',
-      fontStyle: 'font-style',
-      fontWeight: 'font-weight',
-      textAnchor: 'text-anchor',
-      textDecoration: 'text-decoration',
-      dominantBaseline: 'dominant-baseline',
-      alignmentBaseline: 'alignment-baseline',
-      baselineShift: 'baseline-shift',
-      stopColor: 'stop-color',
-      stopOpacity: 'stop-opacity',
-      colorInterpolation: 'color-interpolation',
-      colorInterpolationFilters: 'color-interpolation-filters',
-      floodColor: 'flood-color',
-      floodOpacity: 'flood-opacity',
-      lightingColor: 'lighting-color',
-      markerStart: 'marker-start',
-      markerMid: 'marker-mid',
-      markerEnd: 'marker-end',
-      paintOrder: 'paint-order',
-      vectorEffect: 'vector-effect',
-      shapeRendering: 'shape-rendering',
-      imageRendering: 'image-rendering',
-      pointerEvents: 'pointer-events',
-      xlinkHref: 'xlink:href'
-    }
-
-    for (const [jsx, svg] of Object.entries(jsxToSvgAttributes)) {
-      const regex = new RegExp(`\\b${jsx}=`, 'g')
-      svgContent = svgContent.replace(regex, `${svg}=`)
-    }
-
-    return svgContent
-  }
-
   public clearCache (): void {
     this.cache.clear()
   }
@@ -253,6 +235,13 @@ export class SvgGutterPreview {
     // Dispose existing decorations for this document
     this.disposeDecorationsForUri(docUri)
 
+    // Check if gutter preview is enabled in settings
+    const config = vscode.workspace.getConfiguration('betterSvg')
+    const showGutterPreview = config.get<boolean>('showGutterPreview', true)
+    if (!showGutterPreview) {
+      return
+    }
+
     const text = editor.document.getText()
     const svgRegex = /<svg[\s\S]*?>[\s\S]*?<\/svg>/g
     const newDecorationTypes: vscode.TextEditorDecorationType[] = []
@@ -266,10 +255,7 @@ export class SvgGutterPreview {
       let svgContent = match[0]
 
       // Convert JSX syntax to valid SVG
-      svgContent = this.convertJsxToSvg(svgContent)
-
-      // Remove CSS class attribute (not useful in standalone SVG)
-      svgContent = svgContent.replace(/\s+class\s*=\s*["'][^"']*["']/g, '')
+      svgContent = convertJsxToSvg(svgContent)
 
       // Add xmlns if missing (do this early so SVG is valid)
       if (!svgContent.includes('xmlns=')) {
@@ -371,61 +357,6 @@ export class SvgGutterPreview {
       } else {
         svgContent = svgContent.replace('<svg', `<svg width="${minSize}" height="${minSize}"`)
       }
-    }
-
-    return svgContent
-  }
-
-  private convertJsxToSvg (svgContent: string): string {
-    // Convert JSX expression values like {2} to "2"
-    svgContent = svgContent.replace(/=\{([^}]+)\}/g, '="$1"')
-
-    // Convert className to class
-    svgContent = svgContent.replace(/\bclassName=/g, 'class=')
-
-    // Map of JSX camelCase attributes to SVG kebab-case
-    const jsxToSvgAttributes: Record<string, string> = {
-      strokeWidth: 'stroke-width',
-      strokeLinecap: 'stroke-linecap',
-      strokeLinejoin: 'stroke-linejoin',
-      strokeDasharray: 'stroke-dasharray',
-      strokeDashoffset: 'stroke-dashoffset',
-      strokeMiterlimit: 'stroke-miterlimit',
-      strokeOpacity: 'stroke-opacity',
-      fillOpacity: 'fill-opacity',
-      fillRule: 'fill-rule',
-      clipPath: 'clip-path',
-      clipRule: 'clip-rule',
-      fontFamily: 'font-family',
-      fontSize: 'font-size',
-      fontStyle: 'font-style',
-      fontWeight: 'font-weight',
-      textAnchor: 'text-anchor',
-      textDecoration: 'text-decoration',
-      dominantBaseline: 'dominant-baseline',
-      alignmentBaseline: 'alignment-baseline',
-      baselineShift: 'baseline-shift',
-      stopColor: 'stop-color',
-      stopOpacity: 'stop-opacity',
-      colorInterpolation: 'color-interpolation',
-      colorInterpolationFilters: 'color-interpolation-filters',
-      floodColor: 'flood-color',
-      floodOpacity: 'flood-opacity',
-      lightingColor: 'lighting-color',
-      markerStart: 'marker-start',
-      markerMid: 'marker-mid',
-      markerEnd: 'marker-end',
-      paintOrder: 'paint-order',
-      vectorEffect: 'vector-effect',
-      shapeRendering: 'shape-rendering',
-      imageRendering: 'image-rendering',
-      pointerEvents: 'pointer-events',
-      xlinkHref: 'xlink:href'
-    }
-
-    for (const [jsx, svg] of Object.entries(jsxToSvgAttributes)) {
-      const regex = new RegExp(`\\b${jsx}=`, 'g')
-      svgContent = svgContent.replace(regex, `${svg}=`)
     }
 
     return svgContent
