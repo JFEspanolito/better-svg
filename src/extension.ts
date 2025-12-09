@@ -314,10 +314,7 @@ export async function optimizeSvgDocument (document: vscode.TextDocument) {
   const svgContent = document.getText()
 
   try {
-    const config = vscode.workspace.getConfiguration('betterSvg')
-    const removeClasses = config.get<boolean>('removeClasses', false)
-
-    const plugins = getSvgoPlugins(removeClasses)
+    const plugins = getSvgoPlugins(true)
 
     const result = optimize(svgContent, {
       multipass: true,
@@ -350,10 +347,7 @@ export async function optimizeSvgDocument (document: vscode.TextDocument) {
 
 export async function optimizeSvgInline (document: vscode.TextDocument, svgContent: string, range: vscode.Range) {
   try {
-    const config = vscode.workspace.getConfiguration('betterSvg')
-    const removeClasses = config.get<boolean>('removeClasses', false)
-
-    const plugins = getSvgoPlugins(removeClasses)
+    const plugins = getSvgoPlugins(false)
 
     // Prepare SVG for optimization (convert JSX to valid SVG if needed)
     const { preparedSvg, wasJsx } = prepareForOptimization(svgContent)
