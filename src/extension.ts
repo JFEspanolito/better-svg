@@ -18,6 +18,7 @@ import * as vscode from 'vscode'
 import { SvgPreviewProvider } from './svgEditorProvider'
 import { SvgGutterPreview, SvgHoverProvider } from './svgGutterPreview'
 import { optimize } from 'svgo/browser'
+import { prepareForOptimization, finalizeAfterOptimization } from './svgTransform'
 
 let previewProvider: SvgPreviewProvider
 let gutterPreview: SvgGutterPreview
@@ -232,6 +233,43 @@ export function activate (context: vscode.ExtensionContext) {
         await optimizeSvgDocument(document)
       })
     )
+
+    // Register optimize command from hover
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'betterSvg.optimizeFromHover',
+        async (args?: { uri: string, start: number, length: number }) => {
+          if (!args || !args.uri) {
+            vscode.window.showErrorMessage('No SVG metadata provided')
+            return
+          }
+
+          try {
+            const uri = vscode.Uri.parse(args.uri)
+            const document = await vscode.workspace.openTextDocument(uri)
+            await vscode.window.showTextDocument(document)
+
+            const start = args.start ?? 0
+            const length = args.length ?? 0
+
+            if (length <= 0) {
+              vscode.window.showErrorMessage('Invalid SVG bounds')
+              return
+            }
+
+            const range = new vscode.Range(
+              document.positionAt(start),
+              document.positionAt(start + length)
+            )
+
+            const svgContent = document.getText(range)
+            await optimizeSvgInline(document, svgContent, range)
+          } catch (error) {
+            vscode.window.showErrorMessage(`No SVG found at cursor position (${error})`)
+          }
+        }
+      )
+    )
   } catch (error: any) {
     vscode.window.showErrorMessage(
       'Better SVG: Failed to activate extension!\n' +
@@ -242,34 +280,44 @@ export function activate (context: vscode.ExtensionContext) {
   }
 }
 
+function getSvgoPlugins (removeClasses: boolean): any[] {
+  const plugins: any[] = [
+    {
+      name: 'preset-default',
+      params: {
+        overrides: {
+          removeViewBox: false,
+          // Preserve important attributes by default
+          cleanupIds: false
+        }
+      }
+    },
+    'removeDoctype',
+    'removeComments',
+    {
+      name: 'removeAttrs',
+      params: {
+        // Remove attributes that are not useful in most cases
+        attrs: [
+          'xmlns:xlink',
+          'xml:space',
+          ...(removeClasses ? ['class'] : [])
+        ]
+      }
+    }
+  ]
+
+  return plugins
+}
+
 export async function optimizeSvgDocument (document: vscode.TextDocument) {
   const svgContent = document.getText()
 
   try {
     const config = vscode.workspace.getConfiguration('betterSvg')
-    const removeClasses = config.get<boolean>('removeClasses', true)
+    const removeClasses = config.get<boolean>('removeClasses', false)
 
-    const plugins: any[] = [
-      {
-        name: 'preset-default',
-        params: {
-          overrides: {
-            removeViewBox: false
-          }
-        }
-      },
-      'removeDoctype',
-      'removeComments'
-    ]
-
-    if (removeClasses) {
-      plugins.push({
-        name: 'removeAttrs',
-        params: {
-          attrs: ['class']
-        }
-      })
-    }
+    const plugins = getSvgoPlugins(removeClasses)
 
     const result = optimize(svgContent, {
       multipass: true,
@@ -294,6 +342,51 @@ export async function optimizeSvgDocument (document: vscode.TextDocument) {
 
     vscode.window.showInformationMessage(
       `SVG optimized. Reduced from ${originalSizeKB} KB to ${optimizedSizeKB} KB (${savingPercent}% saved)`
+    )
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to optimize SVG: ${error}`)
+  }
+}
+
+export async function optimizeSvgInline (document: vscode.TextDocument, svgContent: string, range: vscode.Range) {
+  try {
+    const config = vscode.workspace.getConfiguration('betterSvg')
+    const removeClasses = config.get<boolean>('removeClasses', false)
+
+    const plugins = getSvgoPlugins(removeClasses)
+
+    // Prepare SVG for optimization (convert JSX to valid SVG if needed)
+    const { preparedSvg, wasJsx } = prepareForOptimization(svgContent)
+
+    const result = optimize(preparedSvg, {
+      multipass: true,
+      plugins
+    })
+
+    // Convert back to JSX if the original was JSX
+    const finalSvg = finalizeAfterOptimization(result.data, wasJsx)
+
+    const edit = new vscode.WorkspaceEdit()
+    edit.replace(document.uri, range, finalSvg)
+
+    await vscode.workspace.applyEdit(edit)
+
+    // Calculate savings
+    const originalSize = Buffer.byteLength(svgContent, 'utf8')
+    const optimizedSize = Buffer.byteLength(finalSvg, 'utf8')
+    const savingPercent = ((originalSize - optimizedSize) / originalSize * 100).toFixed(2)
+    const originalSizeBytes = originalSize
+    const optimizedSizeBytes = optimizedSize
+
+    const formatBytes = (bytes: number): string => {
+      if (bytes < 1024) {
+        return `${bytes} bytes`
+      }
+      return `${(bytes / 1024).toFixed(2)} KB`
+    }
+
+    vscode.window.showInformationMessage(
+      `SVG optimized. Reduced from ${formatBytes(originalSizeBytes)} to ${formatBytes(optimizedSizeBytes)} (${savingPercent}% saved)`
     )
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to optimize SVG: ${error}`)
