@@ -85,6 +85,10 @@ button {
   cursor: default;
 }
 
+.preview-header-controls svg path { 
+  fill: none; 
+}
+
 .toggle-dark-bg-wrapper {
   display: flex;
   align-items: center;
