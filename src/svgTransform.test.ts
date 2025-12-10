@@ -336,16 +336,13 @@ describe('edge cases', () => {
     
     // Check that we got a valid attribute format
     // The inner quotes should be escaped as &quot;
-    assert.ok(result.includes('onClick="() => { console.log(&quot;click&quot;) }"'))
+    assert.ok(result.includes('data-jsx-event-onClick="() =&gt; { console.log(&quot;click&quot;) }"'))
     assert.ok(result.includes('stroke-width="2"'))
     
     // Check that we can round-trip it back
     // Simulate what SVGO might do (escape >)
-    const resultWithEscapedArrow = result.replace('=>', '=&gt;')
-    
-    const backToJsx = convertSvgToJsx(resultWithEscapedArrow)
-    // Note: spaces might differ, so we check for containment or normalized string
     // Our logic restores onClick={...} and unescapes quotes and HTML entities.
+    const backToJsx = convertSvgToJsx(result)
     assert.ok(backToJsx.includes('onClick={() => { console.log("click") }}'))
     assert.ok(backToJsx.includes('strokeWidth=')) 
   })
@@ -359,5 +356,66 @@ describe('edge cases', () => {
     // Just ensure it doesn't crash and preserves content
     const result = convertJsxToSvg(input)
     assert.ok(result.includes('<title xmlns=\'\'>check-box-solid</title>'))
+  })
+})
+
+describe('spread attributes', () => {
+  it('should detect spread attributes in isJsxSvg', () => {
+    const input = '<svg {...props}><path /></svg>'
+    assert.strictEqual(isJsxSvg(input), true)
+  })
+
+  it('should convert spread attributes in convertJsxToSvg', () => {
+    const input = '<svg {...props}><path /></svg>'
+    const expected = '<svg data-spread-0="props"><path /></svg>'
+    assert.strictEqual(convertJsxToSvg(input), expected)
+  })
+
+  it('should restore spread attributes in convertSvgToJsx', () => {
+    const input = '<svg data-spread-0="props"><path /></svg>'
+    const expected = '<svg {...props}><path /></svg>'
+    assert.strictEqual(convertSvgToJsx(input), expected)
+  })
+
+  it('should handle roundtrip with spread attributes', () => {
+    const input = '<svg {...props} className="w-4 h-4"><path /></svg>'
+    const svg = convertJsxToSvg(input)
+    const output = convertSvgToJsx(svg)
+    assert.strictEqual(output, input)
+  })
+
+  it('should handle multiple spread attributes', () => {
+    const input = '<svg {...props} {...user} className="w-4 h-4"><path /></svg>'
+    const svg = convertJsxToSvg(input)
+    
+    // Ensure we have distinct attributes
+    assert.ok(svg.includes('data-spread-0="props"'))
+    assert.ok(svg.includes('data-spread-1="user"'))
+    
+    const output = convertSvgToJsx(svg)
+    assert.strictEqual(output, input)
+  })
+
+  it('should handle tricky SVG with onClick and class', () => {
+    const input = `<svg onClick={() => { console.log('hola') }} class="hola" data-a="hola" id="hola" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+              viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <polyline points="16 18 22 12 16 6"></polyline>
+              <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>`
+
+    // Should classify as JSX because of strokeLinecap, strokeWidth, onClick expression
+    assert.strictEqual(isJsxSvg(input), true)
+
+    const svg = convertJsxToSvg(input)
+    // onClick should be converted to string attribute with quotes escaped if needed
+    // In this case inner quotes are single quotes so they might stay as is or be friendly
+    assert.ok(svg.includes('data-jsx-event-onClick="() =&gt; { console.log(\'hola\') }"'))
+    assert.ok(svg.includes('stroke-linecap="round"'))
+    
+    const output = convertSvgToJsx(svg)
+    
+    // Original had class="hola". Output will have className="hola" because convertSvgToJsx enforces className
+    const expected = input.replace('class="hola"', 'className="hola"')
+    assert.strictEqual(output, expected)
   })
 })
