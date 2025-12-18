@@ -114,6 +114,24 @@ export function isJsxSvg (svgContent: string): boolean {
     }
   }
 
+  // Check for Astro directives (client:load, client:only, etc.)
+  if (/(?:\s|^)client:[a-z-]+/.test(svgContent)) {
+    return true
+  }
+
+  // Check for Vue directives (v-if, v-bind:prop, :prop, @click)
+  // Search for :, @ or v- followed by a character
+  // We use a regex that matches them as standalone "words" or after spaces
+  const vueRegex = /(?:\s|^)(v-|[:@])[a-zA-Z0-9-:]+/g
+  let match
+  while ((match = vueRegex.exec(svgContent))) {
+    const attr = match[0].trim()
+    // Avoid matching standard namespaces
+    if (!/^(xmlns|xlink|xml|sketch):/.test(attr)) {
+      return true
+    }
+  }
+
   // Check for JSX comments
   if (/\{\/\*[\s\S]*?\*\/\}/.test(svgContent)) {
     return true
@@ -126,6 +144,7 @@ export function isJsxSvg (svgContent: string): boolean {
 
   return false
 }
+
 
 
 /**
@@ -210,17 +229,46 @@ function removeJsxComments (content: string): string {
 }
 
 function protectEncodedAttributes (content: string): string {
-  // Protect any attribute that has a Base64 encoded value
-  // We rename the attribute to data-better-svg-temp-ATTR to hide it from SVGO
-  // This prevents SVGO from modifying the encoded string (e.g. lowercasing, minifying colors)
-  // Matches: attr="__JSX_BASE64__...__"
-  return content.replace(/([a-zA-Z0-9-:]+)=(["'])(__JSX_BASE64__[^"']*?__)\2/g, 'data-better-svg-temp-$1=$2$3$2')
+  // Protect any attribute that has a Base64 encoded value OR is a framework directive
+  // Matches: attr="..." or just attr (boolean)
+  // We avoid \b because it doesn't work with prefix like : or @
+  return content.replace(/(?:\s|^)([a-zA-Z0-9-:@]+)(?:=(["'])([\s\S]*?)\2)?/g, (match, attr, quote, value) => {
+    const prefix = match.startsWith(' ') ? ' ' : ''
+    
+    // Skip if it's already a temp attribute
+    if (attr.startsWith('data-better-svg-temp-')) return match
+
+    // Decide if we should protect this attribute
+    const isEncoded = value?.includes(BASE64_PREFIX)
+    const isDirective = /^(client:|v-|[:@]|class:list)/.test(attr) && !/^(xmlns|xlink|xml|sketch):/.test(attr)
+    
+    if (!isEncoded && !isDirective) {
+      return match
+    }
+
+    // Sanitize attribute name for use in data- attribute
+    const safeAttr = attr.replace(/:/g, '__COLON__').replace(/@/g, '__AT__')
+    
+    if (value !== undefined) {
+      return `${prefix}data-better-svg-temp-${safeAttr}="${value}"`
+    } else {
+      // Boolean attribute (e.g. client:only)
+      return `${prefix}data-better-svg-temp-${safeAttr}="__BOOLEAN__"`
+    }
+  })
 }
 
 function restoreEncodedAttributes (content: string): string {
   // Restore protected attributes
   // data-better-svg-temp-ATTR="..." -> ATTR="..."
-  return content.replace(/data-better-svg-temp-([a-zA-Z0-9-:]+)=/g, '$1=')
+  return content.replace(/data-better-svg-temp-([a-zA-Z0-9-_]+)="([^"]*)"/g, (match, safeAttr, value) => {
+    const attr = safeAttr.replace(/__COLON__/g, ':').replace(/__AT__/g, '@')
+    
+    if (value === '__BOOLEAN__') {
+      return attr
+    }
+    return `${attr}="${value}"`
+  })
 }
 
 /**
