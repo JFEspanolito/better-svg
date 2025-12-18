@@ -45,9 +45,10 @@ describe('isJsxSvg', () => {
 })
 
 describe('convertJsxToSvg', () => {
-  it('should convert expression values {number} to quoted strings', () => {
+  it('should convert expression values {number} to quoted strings (Base64 encoded)', () => {
     const input = '<svg><path strokeWidth={2} /></svg>'
-    const expected = '<svg><path stroke-width="2" /></svg>'
+    // Base64 for "2" is "Mg=="
+    const expected = '<svg><path stroke-width="__JSX_BASE64__Mg==__" /></svg>'
     assert.strictEqual(convertJsxToSvg(input), expected)
   })
 
@@ -107,7 +108,8 @@ describe('convertJsxToSvg', () => {
     assert.ok(result.includes('class='), 'should convert className to class')
     assert.ok(result.includes('stroke-linecap='), 'should convert strokeLinecap')
     assert.ok(result.includes('stroke-linejoin='), 'should convert strokeLinejoin')
-    assert.ok(result.includes('stroke-width="2"'), 'should convert strokeWidth={2}')
+    // Base64 for "2" is "Mg=="
+    assert.ok(result.includes('stroke-width="__JSX_BASE64__Mg==__"'), 'should convert strokeWidth={2}')
     assert.ok(!result.includes('className='), 'should not contain className')
     assert.ok(!result.includes('{2}'), 'should not contain expression syntax')
   })
@@ -212,7 +214,7 @@ describe('prepareForOptimization', () => {
 
     assert.strictEqual(result.wasJsx, true)
     assert.ok(result.preparedSvg.includes('class='))
-    assert.ok(result.preparedSvg.includes('stroke-width="2"'))
+    assert.ok(result.preparedSvg.includes('stroke-width="__JSX_BASE64__Mg==__"'))
   })
 
   it('should not modify standard SVG and return wasJsx: false', () => {
@@ -284,14 +286,15 @@ describe('edge cases', () => {
   it('should handle self-closing SVG elements', () => {
     const input = '<svg><circle strokeWidth={2} /><rect strokeWidth={3} /></svg>'
     const result = convertJsxToSvg(input)
-    assert.ok(result.includes('stroke-width="2"'))
-    assert.ok(result.includes('stroke-width="3"'))
+    assert.ok(result.includes('stroke-width="__JSX_BASE64__Mg==__"'))
+    assert.ok(result.includes('stroke-width="__JSX_BASE64__Mw==__"'))
   })
 
   it('should handle expression with variable name', () => {
     const input = '<svg><path strokeWidth={strokeSize} /></svg>'
     const result = convertJsxToSvg(input)
-    assert.ok(result.includes('stroke-width="strokeSize"'))
+    // Base64 for "strokeSize" is "c3Ryb2tlU2l6ZQ=="
+    assert.ok(result.includes('stroke-width="__JSX_BASE64__c3Ryb2tlU2l6ZQ==__"'))
   })
 
   it('should handle nested SVG elements', () => {
@@ -327,7 +330,7 @@ describe('edge cases', () => {
     const result = convertJsxToSvg(input)
     assert.ok(result.includes('class="icon"'))
     assert.ok(result.includes("stroke-linecap='round'"))
-    assert.ok(result.includes('stroke-width="2"'))
+    assert.ok(result.includes('stroke-width="__JSX_BASE64__Mg==__"'))
   })
 
   it('should handle nested brackets in expressions (e.g. onClick handlers)', () => {
@@ -335,9 +338,10 @@ describe('edge cases', () => {
     const result = convertJsxToSvg(input)
     
     // Check that we got a valid attribute format
-    // The inner quotes should be escaped as &quot;
-    assert.ok(result.includes('data-jsx-event-onClick="() =&gt; { console.log(&quot;click&quot;) }"'))
-    assert.ok(result.includes('stroke-width="2"'))
+    // Expression: () => { console.log("click") }
+    // Base64: ...
+    assert.ok(result.includes('data-jsx-event-onClick="__JSX_BASE64__'))
+    assert.ok(result.includes('stroke-width="__JSX_BASE64__Mg==__"'))
     
     // Check that we can round-trip it back
     // Simulate what SVGO might do (escape >)
@@ -367,12 +371,13 @@ describe('spread attributes', () => {
 
   it('should convert spread attributes in convertJsxToSvg', () => {
     const input = '<svg {...props}><path /></svg>'
-    const expected = '<svg data-spread-0="props"><path /></svg>'
+    // Base64 for "props" is "cHJvcHM="
+    const expected = '<svg data-spread-0="__JSX_BASE64__cHJvcHM=__"><path /></svg>'
     assert.strictEqual(convertJsxToSvg(input), expected)
   })
 
   it('should restore spread attributes in convertSvgToJsx', () => {
-    const input = '<svg data-spread-0="props"><path /></svg>'
+    const input = '<svg data-spread-0="__JSX_BASE64__cHJvcHM=__"><path /></svg>'
     const expected = '<svg {...props}><path /></svg>'
     assert.strictEqual(convertSvgToJsx(input), expected)
   })
@@ -389,8 +394,8 @@ describe('spread attributes', () => {
     const svg = convertJsxToSvg(input)
     
     // Ensure we have distinct attributes
-    assert.ok(svg.includes('data-spread-0="props"'))
-    assert.ok(svg.includes('data-spread-1="user"'))
+    assert.ok(svg.includes('data-spread-0="__JSX_BASE64__cHJvcHM=__"'))
+    assert.ok(svg.includes('data-spread-1="__JSX_BASE64__dXNlcg==__"'))
     
     const output = convertSvgToJsx(svg)
     assert.strictEqual(output, input)
@@ -407,9 +412,8 @@ describe('spread attributes', () => {
     assert.strictEqual(isJsxSvg(input), true)
 
     const svg = convertJsxToSvg(input)
-    // onClick should be converted to string attribute with quotes escaped if needed
-    // In this case inner quotes are single quotes so they might stay as is or be friendly
-    assert.ok(svg.includes('data-jsx-event-onClick="() =&gt; { console.log(\'hola\') }"'))
+    // onClick should be converted to string attribute with Base64 encoded expression
+    assert.ok(svg.includes('data-jsx-event-onClick="__JSX_BASE64__'))
     assert.ok(svg.includes('stroke-linecap="round"'))
     
     const output = convertSvgToJsx(svg)
@@ -419,3 +423,4 @@ describe('spread attributes', () => {
     assert.strictEqual(output, expected)
   })
 })
+
