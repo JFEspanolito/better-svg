@@ -14,6 +14,21 @@
  * limitations under the License.
  */
 
+const BASE64_PREFIX = '__JSX_BASE64__'
+const BASE64_SUFFIX = '__'
+
+function encodeJsx (content: string): string {
+  return BASE64_PREFIX + Buffer.from(content).toString('base64') + BASE64_SUFFIX
+}
+
+function decodeJsx (content: string): string | null {
+  if (content.startsWith(BASE64_PREFIX) && content.endsWith(BASE64_SUFFIX)) {
+    const b64 = content.slice(BASE64_PREFIX.length, -BASE64_SUFFIX.length)
+    return Buffer.from(b64, 'base64').toString('utf-8')
+  }
+  return null
+}
+
 /**
  * Map of JSX camelCase attributes to SVG kebab-case attributes
  */
@@ -162,13 +177,7 @@ function replaceJsxExpressions (content: string): string {
 
     if (found) {
       const expression = content.slice(startIdx + 2, j - 1)
-      // Escape special XML characters inside the attribute value
-      const escapedExpression = expression
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-      result += `="${escapedExpression}"`
+      result += `="${encodeJsx(expression)}"`
       currentIndex = j
     } else {
       // Failed to find matching brace, just skip "={"
@@ -194,9 +203,7 @@ export function convertJsxToSvg (svgContent: string): string {
   // Convert spread attributes {...props} to data-spread-i="props"
   let spreadIndex = 0
   svgContent = svgContent.replace(/\{\.\.\.([^}]+)\}/g, (_match, expression) => {
-    // Escape double quotes inside the attribute value
-    const escapedExpression = expression.replace(/"/g, '&quot;')
-    return `data-spread-${spreadIndex++}="${escapedExpression}"`
+    return `data-spread-${spreadIndex++}="${encodeJsx(expression)}"`
   })
 
   // Convert className to class
@@ -211,6 +218,11 @@ export function convertJsxToSvg (svgContent: string): string {
   // Rename event handlers to avoid security blocking in previews
   // data-jsx-event-onClick="..."
   svgContent = svgContent.replace(/\b(on[A-Z]\w*)=/g, 'data-jsx-event-$1=')
+
+  // Rename 'style' attribute to prevent SVGO from trying to parse JSX objects (Base64) as CSS
+  // Only rename if it seems to be a JSX style (or we can just rename all styles to be safe and avoid minification side-effects on expressions)
+  // We'll rename all 'style=' to 'data-better-svg-style='
+  svgContent = svgContent.replace(/\bstyle=/g, 'data-better-svg-style=')
 
   return svgContent
 }
@@ -232,9 +244,15 @@ export function convertSvgToJsx (svgContent: string): string {
     svgContent = svgContent.replace(regex, `${jsx}=`)
   }
 
-  // Convert data-spread-i="props" back to {...props}
+  // Restore spread attributes
   svgContent = svgContent.replace(/\bdata-spread-\d+="([^"]*)"/g, (_match, value) => {
-    // Unescape &quot; back to " and other html entities
+    const decoded = decodeJsx(value)
+    // If it wasn't encoded (legacy/fallback), try simple unescape or keep as is? 
+    // Just handling our new logic:
+    if (decoded !== null) {
+      return `{...${decoded}}`
+    }
+    // Fallback for old behavior (though we overwrote it) or other cases
     const unescaped = value
       .replace(/&quot;/g, '"')
       .replace(/&gt;/g, '>')
@@ -243,21 +261,25 @@ export function convertSvgToJsx (svgContent: string): string {
     return `{...${unescaped}}`
   })
 
-  // Restore event handlers to expressions
-  // Matches data-jsx-event-onClick="..." and converts back to onClick={() => ...}
-  svgContent = svgContent.replace(/\bdata-jsx-event-(on[A-Z]\w*)="([^"]*)"/g, (match, attr, value) => {
-    // Unescape &quot; back to " and other html entities
-    // Note: the value was escaped in replaceJsxExpressions or originally in the attribute
-    const unescaped = value
-      .replace(/&quot;/g, '"')
-      .replace(/&gt;/g, '>')
-      .replace(/&lt;/g, '<')
-      .replace(/&amp;/g, '&')
-    return `${attr}={${unescaped}}`
-  })
+  // Restore event handlers to simple attributes (value still encoded)
+  // Matches data-jsx-event-onClick="..." and converts back to onClick="..."
+  svgContent = svgContent.replace(/\bdata-jsx-event-(on[A-Z]\w*)="([^"]*)"/g, '$1="$2"')
 
-  // Also handle single occurrences of restored logic for generic expressions if valid?
-  // For now, restricting to event handlers is safer to avoid converting string props to invalid code.
+  // Restore 'style' attribute
+  svgContent = svgContent.replace(/\bdata-better-svg-style=/g, 'style=')
+
+  // Decode Base64 expressions in attributes
+  // content="encoded" -> content={expression}
+  // This matches any attribute with our specific prefix/suffix pattern
+  // Use a regex that captures the attribute name and the quoted value
+  // We handle both double and single quotes
+  svgContent = svgContent.replace(/(\w+)=(["'])(__JSX_BASE64__[^"']*?__)\2/g, (match, attr, quote, value) => {
+    const decoded = decodeJsx(value)
+    if (decoded !== null) {
+      return `${attr}={${decoded}}`
+    }
+    return match
+  })
 
   return svgContent
 }
@@ -295,3 +317,4 @@ export function finalizeAfterOptimization (optimizedSvg: string, wasJsx: boolean
 
   return optimizedSvg
 }
+
