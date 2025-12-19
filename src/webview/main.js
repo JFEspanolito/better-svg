@@ -39,6 +39,7 @@ const vscode = acquireVsCodeApi()
   let translateX = 0
   let translateY = 0
   let isPanning = false
+  let wasPanning = false
   let panStartX = 0
   let panStartY = 0
   let isAltPressed = false
@@ -141,6 +142,8 @@ const vscode = acquireVsCodeApi()
 
   // Zoom and pan functionality
   preview.addEventListener('click', (e) => {
+    if(wasPanning) return;
+
     if (e.target === preview || e.target === svgWrapper || e.target.closest('svg')) {
       // Check both the stored state and the event's altKey
       if (isAltPressed || e.altKey) {
@@ -168,6 +171,7 @@ const vscode = acquireVsCodeApi()
     // Only start panning if clicking on the SVG with left button and not on color picker
     if (e.button === 0 && scale > 1 && !e.target.closest('.preview-header-controls')) {
       isPanning = true
+      wasPanning = false
       panStartX = e.clientX - translateX
       panStartY = e.clientY - translateY
       preview.classList.add('grabbing')
@@ -177,6 +181,7 @@ const vscode = acquireVsCodeApi()
 
   window.addEventListener('mousemove', (e) => {
     if (isPanning) {
+      wasPanning = true;
       translateX = e.clientX - panStartX
       translateY = e.clientY - panStartY
       updateTransform()
