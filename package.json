@@ -36,7 +36,8 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescriptreact",
     "onLanguage:svelte",
-    "onLanguage:vue"
+    "onLanguage:vue",
+    "onLanguage:liquid"
   ],
   "categories": [
     "Programming Languages",
@@ -68,6 +69,13 @@
         }
       ]
     },
+    "languages": [
+      {
+        "id": "liquid",
+        "aliases": ["Liquid"],
+        "extensions": [".liquid"]
+      }
+    ],
     "commands": [
       {
         "command": "betterSvg.optimize",
